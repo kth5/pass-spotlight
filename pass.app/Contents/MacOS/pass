@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# pass - Main executable for the macOS application
+# Compatible with macOS 10.5 through 10.15
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(dirname "$SCRIPT_DIR")"
+RESOURCES_DIR="$APP_DIR/Resources"
+
+# add homebrew/bin to PATH
+export PATH="/opt/homebrew/bin:$PATH"
+
+# Function to check if pass is installed
+check_pass() {
+    if ! command -v pass &> /dev/null; then
+        osascript -e 'display dialog "Error: pass command not found. Please install pass first using: brew install pass or other meants to put it into PATH" buttons {"OK"} default button "OK" with icon stop with title "Pass Not Found"'
+        exit 1
+    fi
+}
+
+# Function to show password input dialog
+show_password_dialog() {
+    local password_name=$(osascript -e 'text returned of (display dialog "Enter password name:" default answer "" buttons {"Cancel", "Get Password"} default button "Get Password" with title "Pass Password Manager" with icon note)')
+    
+    if [[ -n "$password_name" ]]; then
+        echo "$password_name"
+    else
+        echo ""
+    fi
+}
+
+# Function to execute pass command
+execute_pass() {
+    local password_name="$1"
+    
+    if [[ -z "$password_name" ]]; then
+        return 1
+    fi
+    
+    # Check if the password exists
+    if ! pass show "$password_name" &> /dev/null; then
+        osascript -e "display dialog \"Error: Password '$password_name' not found in store\" buttons {\"OK\"} default button \"OK\" with icon stop with title \"Password Not Found\""
+        return 1
+    fi
+    
+    # Copy password to clipboard
+    if pass -c "$password_name"; then
+        #osascript -e "display dialog \"Password for '$password_name' copied to clipboard!\" buttons {\"OK\"} default button \"OK\" with icon note with title \"Success\""
+        return 0
+    else
+        osascript -e "display dialog \"Error: Failed to copy password to clipboard\" buttons {\"OK\"} default button \"OK\" with icon stop with title \"Error\""
+        return 1
+    fi
+}
+
+# Function to get the frontmost application name
+get_frontmost_app() {
+    osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true' 2>/dev/null
+}
+
+# Function to get the frontmost application's unix PID
+get_frontmost_pid() {
+    osascript -e 'tell application "System Events" to get unix id of first application process whose frontmost is true' 2>/dev/null
+}
+
+# Function to restore focus by unix PID (more reliable than name)
+restore_focus_by_pid() {
+    local pid="$1"
+    if [[ -n "$pid" ]]; then
+        osascript -e "
+            tell application \"System Events\"
+                try
+                    set frontmost of (first process whose unix id is $pid) to true
+                end try
+            end tell
+        " 2>/dev/null
+    fi
+}
+
+# Function to restore focus using a different approach
+restore_focus() {
+    local target_app="$1"
+    
+    if [[ -n "$target_app" ]]; then
+        # Use a different AppleScript approach that's more reliable for app bundles
+        osascript -e "
+            tell application \"$target_app\"
+                activate
+            end tell
+            delay 0.1
+            tell application \"System Events\"
+                set targetProcess to first process whose name is \"$target_app\"
+                if exists targetProcess then
+                    set frontmost of targetProcess to true
+                end if
+            end tell
+        " 2>/dev/null
+    fi
+}
+
+# Function to find and restore any user application
+find_and_restore_user_app() {
+    osascript -e '
+        tell application "System Events"
+            set userApps to {}
+            repeat with proc in (every process whose visible is true)
+                set procName to name of proc
+                if procName is not "pass" and procName is not "SystemUIServer" and procName is not "Dock" and procName is not "Finder" and procName is not "loginwindow" then
+                    set end of userApps to procName
+                end if
+            end repeat
+            
+            if (count of userApps) > 0 then
+                set targetApp to item 1 of userApps
+                try
+                    tell application targetApp to activate
+                    delay 0.1
+                    set frontmost of (first process whose name is targetApp) to true
+                    return targetApp
+                end try
+            end if
+        end tell
+    ' 2>/dev/null
+}
+
+# Main execution
+main() {
+    # Check if pass is available
+    check_pass
+    
+    # Show password input dialog
+    local password_name=$(show_password_dialog)
+    
+    # Execute pass command if password name was provided
+    if [[ -n "$password_name" ]]; then
+        execute_pass "$password_name"
+    fi
+}
+
+# Store the previously focused application and PID
+PREVIOUS_APP=$(get_frontmost_app)
+PREVIOUS_PID=$(get_frontmost_pid)
+
+# Run main function
+main "$@"
+
+# Wait a bit for any dialogs to close
+sleep 0.5
+
+# Try immediate restoration as well (PID first)
+if [[ -n "$PREVIOUS_PID" ]]; then
+    restore_focus_by_pid "$PREVIOUS_PID"
+elif [[ -n "$PREVIOUS_APP" ]]; then
+    restore_focus "$PREVIOUS_APP"
+else
+    find_and_restore_user_app
+fi
