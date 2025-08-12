@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Author: Alexander Baldeck <alex.bldck@gmail.com>
+
 # pass - Main executable for the macOS application
 # Compatible with macOS 10.5 through 10.15
 
@@ -83,7 +85,6 @@ restore_focus() {
     local target_app="$1"
     
     if [[ -n "$target_app" ]]; then
-        # Use a different AppleScript approach that's more reliable for app bundles
         osascript -e "
             tell application \"$target_app\"
                 activate
