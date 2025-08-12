@@ -2,11 +2,13 @@
 
 A tiny macOS app that helps you quickly grab a password from your existing password store and paste it where you need it. It should work on MacOSX 10.5 Leopard and later but has thus far only been tested on macOS 10.15.
 
-### What is pass?
+### What is pass and why this wrapper?
 
 pass is the CLI interface for PasswordStore, a Python/GnuPG based password manager.
 
 https://www.passwordstore.org/
+
+It usually is used on the command line directly but it may be inconvenient to switch context to a terminal. Thus this script has been created so the user can call it using the Spotlight search and quickly interact with it without switching context away from the application currently in focus too much.
 
 ### What it does
 - **Asks for a password name**: When you open the app, it shows a small box asking which password you want.
